@@ -28,7 +28,7 @@ const formSchema = z.object({
   password: z
     .string()
     .min(1, 'Please enter your password')
-    .min(7, 'Password must be at least 7 characters long'),
+    .min(6, 'Password must be at least 6 characters long'),
 })
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
@@ -55,12 +55,28 @@ export function UserAuthForm({
   })
 
   async function onSubmit(data: z.infer<typeof formSchema>) {
-    setIsLoading(true)
+    if (isLoading) return
+
     setAuthError(null)
 
+    const email = data.email.trim().toLowerCase()
+    const password = data.password
+
+    if (!email) {
+      setAuthError('Please enter your email.')
+      return
+    }
+
+    if (!password) {
+      setAuthError('Please enter your password.')
+      return
+    }
+
+    setIsLoading(true)
+
     const { data: authData, error } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
+      email,
+      password,
     })
 
     setIsLoading(false)
@@ -68,11 +84,6 @@ export function UserAuthForm({
     if (error) {
       if (error.message.toLowerCase().includes('email not confirmed')) {
         setAuthError('Please confirm your email address before signing in. Check your inbox.')
-      } else if (
-        error.message.toLowerCase().includes('invalid login credentials') ||
-        error.status === 400
-      ) {
-        setAuthError('Invalid email or password. Please try again.')
       } else {
         setAuthError(error.message)
       }
