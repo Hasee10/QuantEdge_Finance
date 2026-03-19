@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
-import { showSubmittedData } from '@/lib/show-submitted-data'
+import { toast } from 'sonner'
+import { getUserPreferences, saveUserPreferences } from '@/lib/user-preferences'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -33,24 +36,51 @@ const notificationsFormSchema = z.object({
 
 type NotificationsFormValues = z.infer<typeof notificationsFormSchema>
 
-// This can come from your database or API.
-const defaultValues: Partial<NotificationsFormValues> = {
-  communication_emails: false,
-  marketing_emails: false,
-  social_emails: true,
-  security_emails: true,
-}
-
 export function NotificationsForm() {
+  const userId = useAuthStore((state) => state.auth.user?.id)
+  const [isSaving, setIsSaving] = useState(false)
+
   const form = useForm<NotificationsFormValues>({
     resolver: zodResolver(notificationsFormSchema),
-    defaultValues,
+    defaultValues: {
+      type: 'mentions',
+      communication_emails: false,
+      marketing_emails: false,
+      social_emails: true,
+      security_emails: true,
+      mobile: false,
+    },
   })
+
+  useEffect(() => {
+    if (!userId) return
+
+    const saved = getUserPreferences(userId)
+    form.reset(saved.notifications)
+  }, [form, userId])
+
+  function onSubmit(data: NotificationsFormValues) {
+    if (!userId) return
+
+    setIsSaving(true)
+    saveUserPreferences(userId, {
+      notifications: {
+        type: data.type,
+        mobile: !!data.mobile,
+        communication_emails: !!data.communication_emails,
+        social_emails: !!data.social_emails,
+        marketing_emails: !!data.marketing_emails,
+        security_emails: !!data.security_emails,
+      },
+    })
+    setIsSaving(false)
+    toast.success('Notification preferences updated.')
+  }
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit((data) => showSubmittedData(data))}
+        onSubmit={form.handleSubmit(onSubmit)}
         className='space-y-8'
       >
         <FormField
@@ -62,7 +92,7 @@ export function NotificationsForm() {
               <FormControl>
                 <RadioGroup
                   onValueChange={field.onChange}
-                  defaultValue={field.value}
+                  value={field.value}
                   className='flex flex-col gap-2'
                 >
                   <FormItem className='flex items-center'>
@@ -175,8 +205,6 @@ export function NotificationsForm() {
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
-                      disabled
-                      aria-readonly
                     />
                   </FormControl>
                 </FormItem>
@@ -202,10 +230,10 @@ export function NotificationsForm() {
                 <FormDescription>
                   You can manage your mobile notifications in the{' '}
                   <Link
-                    to='/settings'
+                    to='/settings/display'
                     className='underline decoration-dashed underline-offset-4 hover:decoration-solid'
                   >
-                    mobile settings
+                    display settings
                   </Link>{' '}
                   page.
                 </FormDescription>
@@ -213,7 +241,9 @@ export function NotificationsForm() {
             </FormItem>
           )}
         />
-        <Button type='submit'>Update notifications</Button>
+        <Button type='submit' disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Update notifications'}
+        </Button>
       </form>
     </Form>
   )

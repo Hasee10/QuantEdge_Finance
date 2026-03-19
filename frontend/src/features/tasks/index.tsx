@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Plus, Trash2 } from 'lucide-react'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Header } from '@/components/layout/header'
@@ -74,6 +75,7 @@ function statusBadge(status: TaskStatus) {
 export function Tasks() {
   const userId = useAuthStore((state) => state.auth.user?.id ?? null)
   const currentOrg = useOrgStore((state) => state.currentOrg)
+  const navigate = useNavigate()
   const [manualTasks, setManualTasks] = useState<TaskItem[]>([])
   const [suggestedTasks, setSuggestedTasks] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -185,6 +187,17 @@ export function Tasks() {
     setManualTasks((current) => current.filter((task) => task.id !== taskId))
   }
 
+  function openTask(row: TaskItem) {
+    if (!row.relatedUrl) return
+
+    if (row.relatedUrl.startsWith('/')) {
+      void navigate({ to: row.relatedUrl as never })
+      return
+    }
+
+    window.open(row.relatedUrl, '_blank', 'noopener,noreferrer')
+  }
+
   const rows = useMemo(() => [...manualTasks, ...suggestedTasks].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [manualTasks, suggestedTasks])
 
   const openCount = rows.filter((task) => task.status === 'open').length
@@ -208,7 +221,7 @@ export function Tasks() {
       render: (_value, row) => (
         <div className='flex items-center justify-end gap-2'>
           {row.relatedUrl ? (
-            <Button variant='outline' size='sm' onClick={() => window.location.assign(row.relatedUrl!)}>
+            <Button variant='outline' size='sm' onClick={() => openTask(row)}>
               Open
             </Button>
           ) : null}

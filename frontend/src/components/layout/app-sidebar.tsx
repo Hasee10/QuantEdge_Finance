@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Command, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useSidebar } from '@/components/ui/sidebar'
 import { sidebarData } from './data/sidebar-data'
@@ -7,6 +8,7 @@ import { NavUser } from './nav-user'
 import { useOrgStore } from '@/stores/org-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { hasMinRole } from '@/lib/permissions'
+import { getDefaultUserPreferences, getUserPreferences, SETTINGS_UPDATED_EVENT } from '@/lib/user-preferences'
 import { useOrgTheme } from '@/context/org-theme-provider'
 import { useLayout } from '@/context/layout-provider'
 import {
@@ -23,16 +25,41 @@ export function AppSidebar() {
   const currentOrg = useOrgStore((state) => state.currentOrg)
   const currentMembership = useOrgStore((state) => state.currentMembership)
   const authUser = useAuthStore((state) => state.auth.user)
+  const [visibleItems, setVisibleItems] = useState<string[]>(
+    getDefaultUserPreferences().display.items
+  )
   const { theme } = useOrgTheme()
+
+  useEffect(() => {
+    setVisibleItems(getUserPreferences(authUser?.id).display.items)
+
+    function handleSettingsUpdate(event: Event) {
+      const detail = (event as CustomEvent<{ userId: string | null; preferences: ReturnType<typeof getUserPreferences> }>).detail
+      if (detail?.userId !== (authUser?.id ?? null)) return
+      setVisibleItems(detail.preferences.display.items)
+    }
+
+    window.addEventListener(SETTINGS_UPDATED_EVENT, handleSettingsUpdate)
+
+    return () => {
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, handleSettingsUpdate)
+    }
+  }, [authUser?.id])
+
   const shellUser = {
     name: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || sidebarData.user.name,
     email: authUser?.email || sidebarData.user.email,
-    avatar: currentOrg?.logo_url || sidebarData.user.avatar,
+    avatar:
+      (typeof authUser?.user_metadata?.avatar_url === 'string' &&
+      authUser.user_metadata.avatar_url) ||
+      currentOrg?.logo_url ||
+      sidebarData.user.avatar,
   }
 
   const filteredNavGroups = sidebarData.navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
+      if ('url' in item && typeof item.url === 'string' && !visibleItems.includes(item.url)) return false
       if (item.url !== '/admin') return true
       const role = currentMembership?.role
       return !!role && hasMinRole(role, 'admin')

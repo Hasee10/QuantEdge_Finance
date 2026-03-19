@@ -1,9 +1,10 @@
+import { useEffect } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { ChevronDownIcon } from '@radix-ui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { toast } from 'sonner'
 import { fonts } from '@/config/fonts'
-import { showSubmittedData } from '@/lib/show-submitted-data'
 import { cn } from '@/lib/utils'
 import { useFont } from '@/context/font-provider'
 import { useTheme } from '@/context/theme-provider'
@@ -28,24 +29,28 @@ type AppearanceFormValues = z.infer<typeof appearanceFormSchema>
 
 export function AppearanceForm() {
   const { font, setFont } = useFont()
-  const { theme, setTheme } = useTheme()
-
-  // This can come from your database or API.
-  const defaultValues: Partial<AppearanceFormValues> = {
-    theme: theme as 'light' | 'dark',
-    font,
-  }
+  const { resolvedTheme, setTheme, theme } = useTheme()
 
   const form = useForm<AppearanceFormValues>({
     resolver: zodResolver(appearanceFormSchema),
-    defaultValues,
+    defaultValues: {
+      theme: resolvedTheme,
+      font,
+    },
   })
 
-  function onSubmit(data: AppearanceFormValues) {
-    if (data.font != font) setFont(data.font)
-    if (data.theme != theme) setTheme(data.theme)
+  useEffect(() => {
+    form.reset({
+      theme: resolvedTheme,
+      font,
+    })
+  }, [font, form, resolvedTheme, theme])
 
-    showSubmittedData(data)
+  function onSubmit(data: AppearanceFormValues) {
+    if (data.font !== font) setFont(data.font)
+    if (data.theme !== resolvedTheme || theme === 'system') setTheme(data.theme)
+
+    toast.success('Appearance updated.')
   }
 
   return (
@@ -67,9 +72,9 @@ export function AppearanceForm() {
                     )}
                     {...field}
                   >
-                    {fonts.map((font) => (
-                      <option key={font} value={font}>
-                        {font}
+                    {fonts.map((fontOption) => (
+                      <option key={fontOption} value={fontOption}>
+                        {fontOption}
                       </option>
                     ))}
                   </select>
@@ -95,7 +100,7 @@ export function AppearanceForm() {
               <FormMessage />
               <RadioGroup
                 onValueChange={field.onChange}
-                defaultValue={field.value}
+                value={field.value}
                 className='grid max-w-md grid-cols-2 gap-8 pt-2'
               >
                 <FormItem>

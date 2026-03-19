@@ -25,7 +25,7 @@ const iconMap: Record<string, ElementType> = {
 const moduleGroups = Array.isArray(modulesConfig) ? modulesConfig : [modulesConfig]
 
 const modelItems = moduleGroups.flatMap((group) =>
-  group.items.map((item) => ({
+  group.items.map((item: { title: string; url: string; icon: string }) => ({
     title: item.title,
     url: item.url,
     icon: iconMap[item.icon] || TrendingUp,

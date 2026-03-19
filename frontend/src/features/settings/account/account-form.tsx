@@ -1,9 +1,13 @@
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { CaretSortIcon, CheckIcon } from '@radix-ui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { showSubmittedData } from '@/lib/show-submitted-data'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase/client'
+import { getUserPreferences, saveUserPreferences } from '@/lib/user-preferences'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -45,28 +49,94 @@ const languages = [
 const accountFormSchema = z.object({
   name: z
     .string()
-    .min(1, 'Please enter your name.')
     .min(2, 'Name must be at least 2 characters.')
-    .max(30, 'Name must not be longer than 30 characters.'),
-  dob: z.date('Please select your date of birth.'),
-  language: z.string('Please select a language.'),
+    .max(60, 'Name must not be longer than 60 characters.'),
+  dob: z.date().optional(),
+  language: z.string().min(1, 'Please select a language.'),
 })
 
 type AccountFormValues = z.infer<typeof accountFormSchema>
 
-// This can come from your database or API.
-const defaultValues: Partial<AccountFormValues> = {
-  name: '',
-}
-
 export function AccountForm() {
+  const user = useAuthStore((state) => state.auth.user)
+  const setSession = useAuthStore((state) => state.auth.setSession)
+  const [isSaving, setIsSaving] = useState(false)
+
   const form = useForm<AccountFormValues>({
     resolver: zodResolver(accountFormSchema),
-    defaultValues,
+    defaultValues: {
+      name: '',
+      dob: undefined,
+      language: 'en',
+    },
   })
 
-  function onSubmit(data: AccountFormValues) {
-    showSubmittedData(data)
+  useEffect(() => {
+    if (!user?.id) return
+
+    const saved = getUserPreferences(user.id)
+    form.reset({
+      name:
+        saved.account.name ||
+        user.user_metadata?.full_name ||
+        user.email?.split('@')[0] ||
+        '',
+      dob: saved.account.dob ? new Date(saved.account.dob) : undefined,
+      language: saved.account.language,
+    })
+  }, [form, user])
+
+  async function onSubmit(data: AccountFormValues) {
+    if (!user?.id) return
+
+    setIsSaving(true)
+
+    try {
+      const fullName = data.name.trim()
+      const dateOfBirth = data.dob ? data.dob.toISOString() : null
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName,
+        } as never)
+        .eq('id', user.id)
+
+      if (profileError) throw profileError
+
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          ...user.user_metadata,
+          full_name: fullName,
+          preferred_language: data.language,
+          date_of_birth: dateOfBirth,
+        },
+      })
+
+      if (authError) throw authError
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session) setSession(session)
+
+      saveUserPreferences(user.id, {
+        account: {
+          name: fullName,
+          dob: dateOfBirth,
+          language: data.language,
+        },
+      })
+
+      toast.success('Account preferences updated.')
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to update account.'
+      toast.error(message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -95,9 +165,13 @@ export function AccountForm() {
           render={({ field }) => (
             <FormItem className='flex flex-col'>
               <FormLabel>Date of birth</FormLabel>
-              <DatePicker selected={field.value} onSelect={field.onChange} />
+              <DatePicker
+                selected={field.value}
+                onSelect={field.onChange}
+                placeholder='Pick a date'
+              />
               <FormDescription>
-                Your date of birth is used to calculate your age.
+                Optional. We use this only for your personal profile context.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -140,7 +214,10 @@ export function AccountForm() {
                             value={language.label}
                             key={language.value}
                             onSelect={() => {
-                              form.setValue('language', language.value)
+                              form.setValue('language', language.value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
                             }}
                           >
                             <CheckIcon
@@ -166,7 +243,9 @@ export function AccountForm() {
             </FormItem>
           )}
         />
-        <Button type='submit'>Update account</Button>
+        <Button type='submit' disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Update account'}
+        </Button>
       </form>
     </Form>
   )
