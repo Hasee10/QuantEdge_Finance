@@ -94,16 +94,31 @@ export default function WatchlistPage() {
 
   async function addTicker(result: SearchResult) {
     if (!userId || items.length >= 20) return
+    const normalizedTicker = result.ticker.trim().toUpperCase()
+
+    if (items.some((item) => item.ticker.toUpperCase() === normalizedTicker)) {
+      toast.error(`${normalizedTicker} is already in your watchlist.`)
+      return
+    }
+
     try {
       const { error } = await supabase.from('watchlist').insert({
         user_id: userId,
-        ticker: result.ticker,
+        ticker: normalizedTicker,
         company_name: result.companyName,
       } as never)
 
       if (error) throw error
       await loadWatchlist()
     } catch (error: any) {
+      if (
+        error.code === '23505' ||
+        error.message?.includes('watchlist_user_id_ticker_key')
+      ) {
+        toast.error(`${normalizedTicker} is already in your watchlist.`)
+        return
+      }
+
       toast.error(error.message || 'Failed to add ticker to watchlist.')
     }
   }

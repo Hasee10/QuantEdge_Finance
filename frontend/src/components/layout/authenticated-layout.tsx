@@ -1,11 +1,14 @@
-import { Outlet } from '@tanstack/react-router'
+import { useEffect } from 'react'
+import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { getCookie } from '@/lib/cookies'
+import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SkipToMain } from '@/components/skip-to-main'
+import { useAuthStore } from '@/stores/auth-store'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -13,6 +16,44 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const navigate = useNavigate()
+  const location = useLocation()
+  const session = useAuthStore((state) => state.auth.session)
+
+  useEffect(() => {
+    async function guardSignedOutAccess() {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+
+      if (currentSession) return
+
+      await navigate({
+        to: '/sign-in',
+        search: { redirect: location.href },
+        replace: true,
+      })
+    }
+
+    void guardSignedOutAccess()
+
+    function handlePageShow() {
+      void guardSignedOutAccess()
+    }
+
+    function handlePopState() {
+      void guardSignedOutAccess()
+    }
+
+    window.addEventListener('pageshow', handlePageShow)
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [location.href, navigate, session])
+
   return (
     <SearchProvider>
       <LayoutProvider>
