@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import { toast } from 'sonner'
+import { getIdleSessionExpired, setIdleSessionExpired } from '@/lib/auth/session-flags'
 import { getCookie } from '@/lib/cookies'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -14,6 +16,8 @@ type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
   const navigate = useNavigate()
@@ -27,6 +31,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
       } = await supabase.auth.getSession()
 
       if (currentSession) return
+      if (getIdleSessionExpired()) return
 
       await navigate({
         to: '/sign-in',
@@ -51,6 +56,72 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     return () => {
       window.removeEventListener('pageshow', handlePageShow)
       window.removeEventListener('popstate', handlePopState)
+    }
+  }, [location.href, navigate, session])
+
+  useEffect(() => {
+    if (!session) return
+
+    let timeoutId: number | null = null
+
+    const resetIdleTimer = () => {
+      if (timeoutId) window.clearTimeout(timeoutId)
+
+      timeoutId = window.setTimeout(async () => {
+        setIdleSessionExpired(true)
+        await supabase.auth.signOut()
+        useAuthStore.getState().auth.reset()
+      }, IDLE_TIMEOUT_MS)
+    }
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'scroll',
+      'touchstart',
+      'focus',
+    ]
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetIdleTimer, { passive: true })
+    })
+
+    resetIdleTimer()
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId)
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetIdleTimer)
+      })
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (!getIdleSessionExpired()) return
+
+    async function requireFreshSignIn() {
+      setIdleSessionExpired(false)
+      toast.error('Your session expired due to inactivity. Please sign in again.')
+      await navigate({
+        to: '/sign-in',
+        search: { redirect: location.href },
+        replace: true,
+      })
+    }
+
+    const promptReauth = () => {
+      window.removeEventListener('pointerdown', promptReauth, true)
+      window.removeEventListener('keydown', promptReauth, true)
+      void requireFreshSignIn()
+    }
+
+    window.addEventListener('pointerdown', promptReauth, true)
+    window.addEventListener('keydown', promptReauth, true)
+
+    return () => {
+      window.removeEventListener('pointerdown', promptReauth, true)
+      window.removeEventListener('keydown', promptReauth, true)
     }
   }, [location.href, navigate, session])
 

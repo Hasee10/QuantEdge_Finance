@@ -20,34 +20,6 @@ import { ThemeProvider } from './context/theme-provider'
 import { routeTree } from './routeTree.gen'
 import './styles/index.css'
 
-const platformRoutePrefixes = [
-  '/dashboard',
-  '/admin',
-  '/news',
-  '/bookmarks',
-  '/watchlist',
-  '/history',
-  '/firm-library',
-  '/dcf',
-  '/merger-analysis',
-  '/lbo-model',
-  '/tasks',
-  '/users',
-  '/chats',
-  '/settings',
-  '/help-center',
-  '/apps',
-]
-
-function shouldForceIntro(pathname: string) {
-  return platformRoutePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-}
-
-if (typeof window !== 'undefined' && shouldForceIntro(window.location.pathname)) {
-  const redirect = `${window.location.pathname}${window.location.search}${window.location.hash}`
-  window.history.replaceState({}, '', `/?redirect=${encodeURIComponent(redirect)}`)
-}
-
 supabase.auth.getSession().then(({ data: { session } }) => {
   useAuthStore.getState().auth.setSession(session)
   void ensureProfileForSession(session)
@@ -96,7 +68,7 @@ const queryClient = new QueryClient({
           toast.error('Session expired!')
           useAuthStore.getState().auth.reset()
           const redirect = `${router.history.location.href}`
-          router.navigate({ to: '/', search: { redirect } })
+          router.navigate({ to: '/sign-in', search: { redirect } })
         }
         if (error.response?.status === 500) {
           toast.error('Internal Server Error!')
